@@ -1,0 +1,30 @@
+image: docker:19.03.8
+
+before_script:
+  - apt-get update -qq
+  - apt-get install -qq git
+  # Setup SSH deploy keys
+  - 'which ssh-agent || ( apt-get install -qq openssh-client )'
+  - eval $(ssh-agent -s)
+  - ssh-add <(echo "$SSH_PRIVATE_KEY")
+  - mkdir -p ~/.ssh
+  - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+
+build:
+  stage: build
+  script:
+    - docker build -t bambangdsanjaya/technical_test:1 .
+    - docker run bambangdsanjaya/technical_test:1
+    - docker push bambangdsanjaya/technical_test:1
+
+deploy:
+  stage: deploy
+  script:
+    # Deployment with SSH #
+    - cat ec2Key.pem | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-add ~/.ssh/id_rsa
+    - ssh-keyscan -H $server_ip >> ~/.ssh/known_hosts  
+    # Pull the registry to deployment server and run the docker #
+    - ssh $username@$server_ip docker pull bambangdsanjaya/technical_test:1
+    - ssh $username@$server_ip docker run --name technical_test -p 80:80 bambangdsanjaya/technical_test:1
